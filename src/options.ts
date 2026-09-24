@@ -78,27 +78,28 @@ async function removeSite(site: string) {
   await chrome.runtime.sendMessage({ type: 'sites-changed' }).catch(() => undefined);
   await renderSites();
 }
-addSite.addEventListener('click', async () => {
+addSite.addEventListener('click', () => {
   siteError!.textContent = '';
   const site = normalizeSite(newSite.value);
   if (!site) {
     siteError!.textContent = 'Enter a valid website, like example.com.';
     return;
   }
-  const sites = await getSites();
-  if (sites.includes(site)) {
-    siteError!.textContent = `${site} is already on the list.`;
-    return;
-  }
-  const granted = await chrome.permissions.request({ origins: sitePatterns(site) }).catch(() => false);
-  if (!granted) {
-    siteError!.textContent = 'Permission was not granted for that site.';
-    return;
-  }
-  await chrome.storage.local.set({ sites: [...sites, site] });
-  await chrome.runtime.sendMessage({ type: 'sites-changed' }).catch(() => undefined);
-  newSite.value = '';
-  await renderSites();
+  void chrome.permissions.request({ origins: sitePatterns(site) }).catch(() => false).then(async granted => {
+    if (!granted) {
+      siteError!.textContent = 'Permission was not granted for that site.';
+      return;
+    }
+    const sites = await getSites();
+    if (sites.includes(site)) {
+      siteError!.textContent = `${site} is already on the list.`;
+      return;
+    }
+    await chrome.storage.local.set({ sites: [...sites, site] });
+    await chrome.runtime.sendMessage({ type: 'sites-changed' }).catch(() => undefined);
+    newSite.value = '';
+    await renderSites();
+  });
 });
 void renderSites();
 
