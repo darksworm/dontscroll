@@ -3,7 +3,7 @@
   "name": "Sudon't",
   "version": "0.1.0",
   "description": "A puzzle before you scroll. Adds a small pause before opening distracting websites.",
-  "homepage_url": "https://github.com/darksworm/dontscroll",
+  "homepage_url": "https://github.com/darksworm/sudont",
   "permissions": ["storage", "tabs", "alarms", "scripting"],
   "optional_host_permissions": ["*://*/*"],
   "background": {
