@@ -46,7 +46,7 @@ async function checkGate() {
   if (checking || overlay) return;
   checking = true;
   try {
-    const settings = await chrome.storage.local.get({ difficulty: 'easy', unlockMinutes: 15, jumps: 10, scrollSession: { unlockedUntil: 0 } });
+    const settings = await chrome.storage.local.get({ difficulty: 'trivial', unlockMinutes: 15, jumps: 10, scrollSession: { unlockedUntil: 0 } });
     const unlockedUntil = Number(settings.scrollSession.unlockedUntil) || 0;
     if (unlockedUntil > Date.now()) {
       scheduleExpiry(unlockedUntil);

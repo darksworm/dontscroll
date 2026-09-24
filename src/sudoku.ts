@@ -5,18 +5,19 @@ export type SudokuPuzzle = {
   solution: string;
 };
 
-export type SudokuDifficulty = 'braindead' | 'easy' | 'medium' | 'hard' | 'evil';
+export type SudokuDifficulty = 'braindead' | 'trivial' | 'easy' | 'medium' | 'hard' | 'evil';
 
 const emptyCellCounts: Record<SudokuDifficulty, number> = {
   braindead: 2,
+  trivial: 4,
   easy: 9,
   medium: 20,
   hard: 35,
   evil: 50,
 };
 
-export function createPuzzle(difficulty: SudokuDifficulty = 'easy'): SudokuPuzzle {
-  const generated = getSudoku(difficulty === 'evil' ? 'expert' : difficulty === 'braindead' ? 'easy' : difficulty);
+export function createPuzzle(difficulty: SudokuDifficulty = 'trivial'): SudokuPuzzle {
+  const generated = getSudoku(difficulty === 'evil' ? 'expert' : difficulty === 'braindead' || difficulty === 'trivial' ? 'easy' : difficulty);
   const puzzle = generated.puzzle.split('');
   const emptyCells = puzzle
     .map((value, index) => (value === '-' ? index : -1))

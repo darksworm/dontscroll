@@ -128,7 +128,7 @@ async function renderExtraTimeLog() {
 }
 void renderExtraTimeLog();
 
-void chrome.storage.local.get({ difficulty: 'easy', jumps: 10, unlockMinutes: 15, scrollSession: { unlockedUntil: 0 } }).then((settings) => {
+void chrome.storage.local.get({ difficulty: 'trivial', jumps: 10, unlockMinutes: 15, scrollSession: { unlockedUntil: 0 } }).then((settings) => {
   difficulty.value = settings.difficulty;
   jumps.value = String(settings.jumps);
   unlockMinutes.value = String(settings.unlockMinutes);

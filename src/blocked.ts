@@ -5,7 +5,7 @@ const target = new URLSearchParams(location.search).get('target');
 if (!target || !/^https?:$/.test(new URL(target).protocol)) throw new Error('Invalid destination');
 const host = document.createElement('div');
 document.body.replaceChildren(host);
-void chrome.storage.local.get({ difficulty: 'easy', unlockMinutes: 15, jumps: 10 }).then(settings => {
+void chrome.storage.local.get({ difficulty: 'trivial', unlockMinutes: 15, jumps: 10 }).then(settings => {
   mountGate(host.attachShadow({ mode: 'open' }), {
     difficulty: settings.difficulty as SudokuDifficulty,
     unlockMinutes: Number(settings.unlockMinutes),
