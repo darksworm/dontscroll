@@ -1,0 +1,22 @@
+{
+  "name": "dontscroll",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A webextension that adds a small pause before distracting websites open.",
+  "packageManager": "pnpm@12.6.0",
+  "scripts": {
+    "build": "pnpm clean && pnpm compile && pnpm bundle && pnpm copy-static",
+    "clean": "rm -rf dist",
+    "compile": "tsc --noEmit",
+    "bundle": "esbuild src/background.ts src/blocked.ts src/options.ts src/content.ts --bundle --outdir=dist --format=iife --platform=browser --sourcemap",
+    "copy-static": "cp manifest.json dist/manifest.json && cp src/blocked.html dist/blocked.html && cp src/options.html dist/options.html"
+  },
+  "dependencies": {
+    "sudoku-gen": "^1.0.2"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.270",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.3"
+  }
+}
