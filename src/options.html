@@ -10,6 +10,9 @@
       select, input, button { padding: 8px; font: inherit; }
       input { width: 90px; }
       #saved { min-height: 24px; color: #3d6b67; }
+      #extra-time-log { list-style: none; padding: 0; margin: 8px 0; max-height: 240px; overflow-y: auto; }
+      #extra-time-log li { padding: 8px 0; border-bottom: 1px solid #e5e0d4; font-size: 14px; }
+      #extra-time-log .meta { color: #716a5c; font-weight: 400; }
     </style>
   </head>
   <body>
@@ -33,6 +36,8 @@
       <summary>Developer settings</summary>
       <p id="time-left">Loading session status...</p>
       <button id="reset-session">Require Sudoku now</button>
+      <h2>Extra time log</h2>
+      <ul id="extra-time-log"></ul>
     </details>
     <p id="saved" aria-live="polite"></p>
     <script src="options.js"></script>

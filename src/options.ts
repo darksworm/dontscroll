@@ -5,8 +5,34 @@ const save = document.querySelector<HTMLButtonElement>('#save');
 const resetSession = document.querySelector<HTMLButtonElement>('#reset-session');
 const timeLeft = document.querySelector<HTMLElement>('#time-left');
 const saved = document.querySelector<HTMLElement>('#saved');
+const extraTimeLog = document.querySelector<HTMLUListElement>('#extra-time-log');
 
-if (!difficulty || !jumps || !unlockMinutes || !save || !resetSession || !timeLeft || !saved) throw new Error('Settings page is missing required elements');
+if (!difficulty || !jumps || !unlockMinutes || !save || !resetSession || !timeLeft || !saved || !extraTimeLog) throw new Error('Settings page is missing required elements');
+
+type ExtraTimeEntry = { timestamp: number; minutes: number; reason: string; website?: string };
+
+async function renderExtraTimeLog() {
+  const { extraTimeLog: log } = await chrome.storage.local.get({ extraTimeLog: [] as ExtraTimeEntry[] });
+  const entries = Array.isArray(log) ? log : [];
+  extraTimeLog!.textContent = '';
+  if (entries.length === 0) {
+    const empty = document.createElement('li');
+    empty.textContent = 'No extra time granted yet.';
+    extraTimeLog!.append(empty);
+    return;
+  }
+  [...entries].reverse().forEach(entry => {
+    const item = document.createElement('li');
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.textContent = `${new Date(entry.timestamp).toLocaleString()} · ${entry.website ?? 'unknown site'} · +${entry.minutes} min`;
+    const text = document.createElement('div');
+    text.textContent = entry.reason;
+    item.append(meta, text);
+    extraTimeLog!.append(item);
+  });
+}
+void renderExtraTimeLog();
 
 void chrome.storage.local.get({ difficulty: 'easy', jumps: 10, unlockMinutes: 15, scrollSession: { unlockedUntil: 0 } }).then((settings) => {
   difficulty.value = settings.difficulty;
@@ -22,6 +48,7 @@ async function renderTimeLeft() {
 }
 void renderTimeLeft();
 window.setInterval(() => void renderTimeLeft(), 1000);
+window.setInterval(() => void renderExtraTimeLog(), 5000);
 
 save.addEventListener('click', async () => {
   const jumpCount = Math.max(0, Math.min(19, Number(jumps.value) || 0));
