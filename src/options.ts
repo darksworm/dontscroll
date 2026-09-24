@@ -1,3 +1,4 @@
+export {};
 const difficulty = document.querySelector<HTMLSelectElement>('#difficulty');
 const jumps = document.querySelector<HTMLInputElement>('#jumps');
 const unlockMinutes = document.querySelector<HTMLInputElement>('#unlock-minutes');
@@ -6,8 +7,100 @@ const resetSession = document.querySelector<HTMLButtonElement>('#reset-session')
 const timeLeft = document.querySelector<HTMLElement>('#time-left');
 const saved = document.querySelector<HTMLElement>('#saved');
 const extraTimeLog = document.querySelector<HTMLUListElement>('#extra-time-log');
+const sitesList = document.querySelector<HTMLUListElement>('#sites');
+const newSite = document.querySelector<HTMLInputElement>('#new-site');
+const addSite = document.querySelector<HTMLButtonElement>('#add-site');
+const siteError = document.querySelector<HTMLElement>('#site-error');
 
-if (!difficulty || !jumps || !unlockMinutes || !save || !resetSession || !timeLeft || !saved || !extraTimeLog) throw new Error('Settings page is missing required elements');
+if (!difficulty || !jumps || !unlockMinutes || !save || !resetSession || !timeLeft || !saved || !extraTimeLog || !sitesList || !newSite || !addSite || !siteError) throw new Error('Settings page is missing required elements');
+
+const defaultSites = ['youtube.com', 'reddit.com'];
+
+function normalizeSite(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  try {
+    const withProtocol = /^[a-z]+:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    const hostname = new URL(withProtocol).hostname.toLowerCase().replace(/^www\./, '');
+    return hostname.includes('.') ? hostname : null;
+  } catch { return null; }
+}
+function sitePatterns(site: string): string[] {
+  return [`*://${site}/*`, `*://*.${site}/*`];
+}
+async function getSites(): Promise<string[]> {
+  const { sites } = await chrome.storage.local.get({ sites: defaultSites });
+  return Array.isArray(sites) && sites.every(site => typeof site === 'string') ? sites : defaultSites;
+}
+async function grantSite(site: string) {
+  const granted = await chrome.permissions.request({ origins: sitePatterns(site) }).catch(() => false);
+  if (!granted) {
+    siteError!.textContent = `Permission was not granted for ${site}.`;
+    return;
+  }
+  await chrome.runtime.sendMessage({ type: 'sites-changed' }).catch(() => undefined);
+  await renderSites();
+}
+async function renderSites() {
+  const sites = await getSites();
+  sitesList!.textContent = '';
+  if (sites.length === 0) {
+    const empty = document.createElement('li');
+    empty.textContent = 'No websites configured.';
+    sitesList!.append(empty);
+    return;
+  }
+  for (const site of sites) {
+    const item = document.createElement('li');
+    const label = document.createElement('span');
+    label.textContent = site;
+    item.append(label);
+    const granted = await chrome.permissions.contains({ origins: sitePatterns(site) });
+    if (!granted) {
+      const grant = document.createElement('button');
+      grant.type = 'button';
+      grant.textContent = 'Grant access';
+      grant.addEventListener('click', () => void grantSite(site));
+      item.append(grant);
+    }
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = 'Remove';
+    remove.addEventListener('click', () => void removeSite(site));
+    item.append(remove);
+    sitesList!.append(item);
+  }
+}
+async function removeSite(site: string) {
+  const sites = await getSites();
+  await chrome.permissions.remove({ origins: sitePatterns(site) }).catch(() => undefined);
+  await chrome.storage.local.set({ sites: sites.filter(existing => existing !== site) });
+  await chrome.runtime.sendMessage({ type: 'sites-changed' }).catch(() => undefined);
+  await renderSites();
+}
+addSite.addEventListener('click', async () => {
+  siteError!.textContent = '';
+  const site = normalizeSite(newSite.value);
+  if (!site) {
+    siteError!.textContent = 'Enter a valid website, like example.com.';
+    return;
+  }
+  const sites = await getSites();
+  if (sites.includes(site)) {
+    siteError!.textContent = `${site} is already on the list.`;
+    return;
+  }
+  const granted = await chrome.permissions.request({ origins: sitePatterns(site) }).catch(() => false);
+  if (!granted) {
+    siteError!.textContent = 'Permission was not granted for that site.';
+    return;
+  }
+  await chrome.storage.local.set({ sites: [...sites, site] });
+  await chrome.runtime.sendMessage({ type: 'sites-changed' }).catch(() => undefined);
+  newSite.value = '';
+  await renderSites();
+});
+void renderSites();
 
 type ExtraTimeEntry = { timestamp: number; minutes: number; reason: string; website?: string };
 

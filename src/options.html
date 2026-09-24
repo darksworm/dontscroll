@@ -13,6 +13,12 @@
       #extra-time-log { list-style: none; padding: 0; margin: 8px 0; max-height: 240px; overflow-y: auto; }
       #extra-time-log li { padding: 8px 0; border-bottom: 1px solid #e5e0d4; font-size: 14px; }
       #extra-time-log .meta { color: #716a5c; font-weight: 400; }
+      #sites { list-style: none; padding: 0; margin: 8px 0; }
+      #sites li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #e5e0d4; }
+      #sites button { padding: 4px 10px; }
+      .add-site { display: flex; gap: 8px; margin-top: 8px; }
+      .add-site input { width: 220px; }
+      #site-error { color: #a3453b; min-height: 20px; font-size: 14px; }
     </style>
   </head>
   <body>
@@ -32,6 +38,16 @@
     <input id="unlock-minutes" type="number" min="1" max="240" step="1">
     <p>When this expires, all blocked tabs require a new Sudoku solution.</p>
     <button id="save">Save settings</button>
+
+    <label>Watched websites</label>
+    <p>The Sudoku gate only applies to the sites listed here.</p>
+    <ul id="sites"></ul>
+    <div class="add-site">
+      <input id="new-site" type="text" placeholder="example.com">
+      <button id="add-site">Add site</button>
+    </div>
+    <p id="site-error" role="alert"></p>
+
     <details>
       <summary>Developer settings</summary>
       <p id="time-left">Loading session status...</p>
