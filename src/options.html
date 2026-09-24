@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Don't Scroll settings</title>
+    <title>Sudon't settings</title>
     <style>
       body { max-width: 560px; margin: 48px auto; padding: 0 20px; color: #28251f; font: 16px system-ui, sans-serif; }
       label { display: block; margin: 24px 0 8px; font-weight: 700; }
@@ -19,10 +19,12 @@
       .add-site { display: flex; gap: 8px; margin-top: 8px; }
       .add-site input { width: 220px; }
       #site-error { color: #a3453b; min-height: 20px; font-size: 14px; }
+      footer { margin-top: 32px; font-size: 13px; color: #716a5c; }
+      footer a { color: inherit; }
     </style>
   </head>
   <body>
-    <h1>Don't Scroll settings</h1>
+    <h1>Sudon't settings</h1>
     <label for="difficulty">Sudoku difficulty</label>
     <select id="difficulty">
       <option value="braindead">Braindead (2 numbers)</option>
@@ -56,6 +58,7 @@
       <ul id="extra-time-log"></ul>
     </details>
     <p id="saved" aria-live="polite"></p>
+    <footer><a href="https://github.com/darksworm/dontscroll" target="_blank" rel="noopener noreferrer">Sudon't on GitHub</a></footer>
     <script src="options.js"></script>
   </body>
 </html>

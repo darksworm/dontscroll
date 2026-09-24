@@ -1,15 +1,17 @@
 {
-  "name": "dontscroll",
+  "name": "sudont",
   "version": "0.1.0",
   "private": true,
-  "description": "A webextension that adds a small pause before distracting websites open.",
+  "description": "Sudon't - a puzzle before you scroll. Adds a small pause before distracting websites open.",
   "packageManager": "pnpm@12.6.0",
   "scripts": {
-    "build": "pnpm clean && pnpm compile && pnpm bundle && pnpm copy-static",
+    "build": "pnpm clean && pnpm icons && pnpm compile && pnpm bundle && pnpm copy-static",
     "clean": "rm -rf dist",
+    "icons": "bash scripts/generate-icons.sh",
     "compile": "tsc --noEmit",
     "bundle": "esbuild src/background.ts src/blocked.ts src/options.ts src/content.ts --bundle --outdir=dist --format=iife --platform=browser --sourcemap",
-    "copy-static": "cp manifest.json dist/manifest.json && cp src/blocked.html dist/blocked.html && cp src/options.html dist/options.html"
+    "copy-static": "cp manifest.json dist/manifest.json && cp src/blocked.html dist/blocked.html && cp src/options.html dist/options.html && cp -r icons dist/icons",
+    "zip": "cd dist && zip -r ../sudont.zip . -x '*.map'"
   },
   "dependencies": {
     "sudoku-gen": "^1.0.2"
