@@ -15,16 +15,37 @@
       #extra-time-log .meta { color: #716a5c; font-weight: 400; }
       #sites { list-style: none; padding: 0; margin: 8px 0; }
       #sites li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #e5e0d4; }
+      #sites li.inactive { background: #fbf1ef; }
       #sites button { padding: 4px 10px; }
+      #sites .status { font-size: 13px; color: #a3453b; font-weight: 700; }
+      #sites .site-info { display: flex; flex-direction: column; }
       .add-site { display: flex; gap: 8px; margin-top: 8px; }
       .add-site input { width: 220px; }
       #site-error { color: #a3453b; min-height: 20px; font-size: 14px; }
+      #welcome-banner { display: none; margin: 8px 0 24px; padding: 16px; border: 1px solid #a3453b; border-radius: 6px; background: #fbf1ef; }
+      #welcome-banner p { margin: 0 0 12px; }
+      #welcome-banner button { background: #a3453b; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
       footer { margin-top: 32px; font-size: 13px; color: #716a5c; }
       footer a { color: inherit; }
     </style>
   </head>
   <body>
     <h1>Sudon't settings</h1>
+
+    <div id="welcome-banner" role="alert">
+      <p id="welcome-message">Sudon't isn't active yet. Allow access to the sites below so it can show a puzzle before they load.</p>
+      <button id="allow-all" type="button">Allow access to all</button>
+    </div>
+
+    <label>Watched websites</label>
+    <p>The Sudoku gate only applies to the sites listed here.</p>
+    <ul id="sites"></ul>
+    <div class="add-site">
+      <input id="new-site" type="text" placeholder="example.com">
+      <button id="add-site">Add site</button>
+    </div>
+    <p id="site-error" role="alert"></p>
+
     <label for="difficulty">Sudoku difficulty</label>
     <select id="difficulty">
       <option value="braindead">Braindead (2 numbers)</option>
@@ -41,15 +62,6 @@
     <input id="unlock-minutes" type="number" min="1" max="240" step="1">
     <p>When this expires, all blocked tabs require a new Sudoku solution.</p>
     <button id="save">Save settings</button>
-
-    <label>Watched websites</label>
-    <p>The Sudoku gate only applies to the sites listed here.</p>
-    <ul id="sites"></ul>
-    <div class="add-site">
-      <input id="new-site" type="text" placeholder="example.com">
-      <button id="add-site">Add site</button>
-    </div>
-    <p id="site-error" role="alert"></p>
 
     <details>
       <summary>Developer settings</summary>

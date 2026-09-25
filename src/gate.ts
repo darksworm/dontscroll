@@ -99,7 +99,7 @@ export function mountGate(root: ShadowRoot, settings: { difficulty: SudokuDiffic
       if (isSolved(cells.map(cell => cell.value), puzzle.solution)) {
         showChoices();
         onSolved?.();
-        void chrome.runtime.sendMessage({ type: 'sudoku-solved' }).catch(() => undefined);
+        void chrome.runtime.sendMessage({ type: 'sudoku-solved' }).catch(error => console.error("Sudon't: failed to notify background of solve", error));
       }
     };
     for (let index = 0; index < 81; index++) {

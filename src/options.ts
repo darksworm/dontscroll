@@ -11,8 +11,10 @@ const sitesList = document.querySelector<HTMLUListElement>('#sites');
 const newSite = document.querySelector<HTMLInputElement>('#new-site');
 const addSite = document.querySelector<HTMLButtonElement>('#add-site');
 const siteError = document.querySelector<HTMLElement>('#site-error');
+const welcomeBanner = document.querySelector<HTMLElement>('#welcome-banner');
+const allowAll = document.querySelector<HTMLButtonElement>('#allow-all');
 
-if (!difficulty || !jumps || !unlockMinutes || !save || !resetSession || !timeLeft || !saved || !extraTimeLog || !sitesList || !newSite || !addSite || !siteError) throw new Error('Settings page is missing required elements');
+if (!difficulty || !jumps || !unlockMinutes || !save || !resetSession || !timeLeft || !saved || !extraTimeLog || !sitesList || !newSite || !addSite || !siteError || !welcomeBanner || !allowAll) throw new Error('Settings page is missing required elements');
 
 const defaultSites = ['youtube.com', 'reddit.com'];
 
@@ -28,21 +30,36 @@ function normalizeSite(input: string): string | null {
 function sitePatterns(site: string): string[] {
   return [`*://${site}/*`, `*://*.${site}/*`];
 }
+function allSitePatterns(sites: string[]): string[] {
+  return sites.flatMap(sitePatterns);
+}
 async function getSites(): Promise<string[]> {
   const { sites } = await chrome.storage.local.get({ sites: defaultSites });
   return Array.isArray(sites) && sites.every(site => typeof site === 'string') ? sites : defaultSites;
 }
 async function grantSite(site: string) {
-  const granted = await chrome.permissions.request({ origins: sitePatterns(site) }).catch(() => false);
+  const granted = await chrome.permissions.request({ origins: sitePatterns(site) }).catch(error => {
+    console.error("Sudon't: permissions.request failed", error);
+    return false;
+  });
   if (!granted) {
     siteError!.textContent = `Permission was not granted for ${site}.`;
     return;
   }
-  await chrome.runtime.sendMessage({ type: 'sites-changed' }).catch(() => undefined);
+  await chrome.runtime.sendMessage({ type: 'sites-changed' }).catch(error => console.error("Sudon't: failed to notify background", error));
   await renderSites();
+}
+let cachedMissingSites: string[] = [];
+async function renderWelcomeBanner(sites: string[]) {
+  const missing = await Promise.all(sites.map(async site => (await chrome.permissions.contains({ origins: sitePatterns(site) })) ? null : site));
+  const missingSites = missing.filter((site): site is string => site !== null);
+  cachedMissingSites = missingSites;
+  welcomeBanner!.style.display = missingSites.length > 0 ? 'block' : 'none';
+  return missingSites;
 }
 async function renderSites() {
   const sites = await getSites();
+  const missingSites = await renderWelcomeBanner(sites);
   sitesList!.textContent = '';
   if (sites.length === 0) {
     const empty = document.createElement('li');
@@ -52,10 +69,20 @@ async function renderSites() {
   }
   for (const site of sites) {
     const item = document.createElement('li');
+    const granted = !missingSites.includes(site);
+    if (!granted) item.className = 'inactive';
+    const info = document.createElement('div');
+    info.className = 'site-info';
     const label = document.createElement('span');
     label.textContent = site;
-    item.append(label);
-    const granted = await chrome.permissions.contains({ origins: sitePatterns(site) });
+    info.append(label);
+    if (!granted) {
+      const status = document.createElement('span');
+      status.className = 'status';
+      status.textContent = 'Not active, access needed';
+      info.append(status);
+    }
+    item.append(info);
     if (!granted) {
       const grant = document.createElement('button');
       grant.type = 'button';
@@ -73,9 +100,9 @@ async function renderSites() {
 }
 async function removeSite(site: string) {
   const sites = await getSites();
-  await chrome.permissions.remove({ origins: sitePatterns(site) }).catch(() => undefined);
+  await chrome.permissions.remove({ origins: sitePatterns(site) }).catch(error => console.error("Sudon't: permissions.remove failed", error));
   await chrome.storage.local.set({ sites: sites.filter(existing => existing !== site) });
-  await chrome.runtime.sendMessage({ type: 'sites-changed' }).catch(() => undefined);
+  await chrome.runtime.sendMessage({ type: 'sites-changed' }).catch(error => console.error("Sudon't: failed to notify background", error));
   await renderSites();
 }
 addSite.addEventListener('click', () => {
@@ -85,7 +112,10 @@ addSite.addEventListener('click', () => {
     siteError!.textContent = 'Enter a valid website, like example.com.';
     return;
   }
-  void chrome.permissions.request({ origins: sitePatterns(site) }).catch(() => false).then(async granted => {
+  void chrome.permissions.request({ origins: sitePatterns(site) }).catch(error => {
+    console.error("Sudon't: permissions.request failed", error);
+    return false;
+  }).then(async granted => {
     if (!granted) {
       siteError!.textContent = 'Permission was not granted for that site.';
       return;
@@ -96,12 +126,31 @@ addSite.addEventListener('click', () => {
       return;
     }
     await chrome.storage.local.set({ sites: [...sites, site] });
-    await chrome.runtime.sendMessage({ type: 'sites-changed' }).catch(() => undefined);
+    await chrome.runtime.sendMessage({ type: 'sites-changed' }).catch(error => console.error("Sudon't: failed to notify background", error));
     newSite.value = '';
     await renderSites();
   });
 });
 void renderSites();
+
+allowAll.addEventListener('click', () => {
+  siteError!.textContent = '';
+  if (cachedMissingSites.length === 0) return;
+  void chrome.permissions.request({ origins: allSitePatterns(cachedMissingSites) }).catch(error => {
+    console.error("Sudon't: permissions.request failed", error);
+    return false;
+  }).then(async granted => {
+    if (!granted) {
+      siteError!.textContent = 'Permission was not granted.';
+      return;
+    }
+    await chrome.runtime.sendMessage({ type: 'sites-changed' }).catch(error => console.error("Sudon't: failed to notify background", error));
+    await renderSites();
+  });
+});
+
+chrome.permissions.onAdded?.addListener(() => void renderSites());
+chrome.permissions.onRemoved?.addListener(() => void renderSites());
 
 type ExtraTimeEntry = { timestamp: number; minutes: number; reason: string; website?: string };
 
@@ -156,5 +205,8 @@ save.addEventListener('click', async () => {
 resetSession.addEventListener('click', () => {
   void chrome.runtime.sendMessage({ type: 'reset-session' }).then(() => {
     saved.textContent = 'Sudoku required on the next blocked-site visit.';
+  }).catch(error => {
+    console.error("Sudon't: failed to reset session", error);
+    saved.textContent = 'Failed to reset session.';
   });
 });

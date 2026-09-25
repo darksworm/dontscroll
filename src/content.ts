@@ -38,7 +38,7 @@ function closeGate() {
   document.removeEventListener('play', pause, true);
   previousFocus?.focus();
   if (document.visibilityState === 'visible') {
-    for (const media of pausedMedia) if (media.isConnected) void media.play().catch(() => undefined);
+    for (const media of pausedMedia) if (media.isConnected) void media.play().catch(error => console.warn("Sudon't: failed to resume media playback", error));
   }
   pausedMedia.clear();
 }

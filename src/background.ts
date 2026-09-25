@@ -26,7 +26,16 @@ async function getPermittedSites(): Promise<string[]> {
   const permitted = await Promise.all(sites.map(async site => (await chrome.permissions.contains({ origins: sitePatterns([site]) })) ? site : null));
   return permitted.filter((site): site is string => site !== null);
 }
+async function syncBadge() {
+  const sites = await getSites();
+  const permitted = await getPermittedSites();
+  const missing = sites.length - permitted.length;
+  await chrome.action.setBadgeText({ text: missing > 0 ? String(missing) : '' });
+  if (missing > 0) await chrome.action.setBadgeBackgroundColor({ color: '#a3453b' });
+  await chrome.action.setTitle({ title: missing > 0 ? `Sudon't: ${missing} site${missing === 1 ? '' : 's'} need access` : "Sudon't" });
+}
 async function syncContentScripts() {
+  await syncBadge().catch(error => console.error("Sudon't: failed to sync badge", error));
   const matches = sitePatterns(await getPermittedSites());
   const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [contentScriptId] });
   if (matches.length === 0) {
@@ -45,7 +54,7 @@ async function guardAllTabs() {
   }
   const sites = await getSites();
   const tabs = await chrome.tabs.query({});
-  await Promise.all(tabs.filter(tab => tab.id !== undefined && isBlockedUrl(tab.url, sites)).map(tab => chrome.tabs.sendMessage(tab.id!, { type: 'show-sudoku' }).catch(() => undefined)));
+  await Promise.all(tabs.filter(tab => tab.id !== undefined && isBlockedUrl(tab.url, sites)).map(tab => chrome.tabs.sendMessage(tab.id!, { type: 'show-sudoku' }).catch(error => console.error("Sudon't: failed to message tab", tab.id, error))));
 }
 async function logExtraTimeGrant(minutes: number, reason: string, website?: string) {
   const { [extraTimeLogKey]: log } = await chrome.storage.local.get({ [extraTimeLogKey]: [] as unknown[] });
@@ -86,16 +95,47 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     const website = (() => { try { return new URL(sender.url ?? '').hostname; } catch { return undefined; } })();
     return { ok: true, unlockedUntil: await unlock(message.minutes, message.reason, website) };
   };
-  void operation().then(respond).catch(() => respond({ ok: false }));
+  void operation().then(respond).catch(error => { console.error("Sudon't: message handler failed", message?.type, error); respond({ ok: false }); });
   return true;
 });
-chrome.tabs.onUpdated.addListener((_id, change) => { if (change.url || change.status === 'complete') void guardAllTabs(); });
-chrome.tabs.onActivated.addListener(() => void guardAllTabs());
-chrome.runtime.onStartup.addListener(() => { void syncContentScripts(); void guardAllTabs(); });
-chrome.runtime.onInstalled.addListener(() => { void syncContentScripts(); void guardAllTabs(); });
-chrome.permissions.onAdded.addListener(() => { void syncContentScripts(); void guardAllTabs(); });
-chrome.permissions.onRemoved.addListener(() => { void syncContentScripts(); void guardAllTabs(); });
-chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === alarmName) void guardAllTabs(); });
-chrome.action.onClicked.addListener(() => void chrome.runtime.openOptionsPage());
-void syncContentScripts();
-void guardAllTabs();
+chrome.tabs.onUpdated.addListener((_id, change) => { if (change.url || change.status === 'complete') void guardAllTabs().catch(error => console.error("Sudon't: guardAllTabs failed", error)); });
+chrome.tabs.onActivated.addListener(() => void guardAllTabs().catch(error => console.error("Sudon't: guardAllTabs failed", error)));
+async function showWelcome() {
+  console.log("Sudon't: opening welcome page");
+  await chrome.storage.local.set({ welcomeShown: true });
+  const tab = await chrome.tabs.create({ url: chrome.runtime.getURL('options.html#welcome') }).catch(error => {
+    console.error("Sudon't: failed to open welcome page", error);
+    return undefined;
+  });
+  if (tab) console.log("Sudon't: welcome page opened", tab.id);
+}
+async function showWelcomeIfNeeded() {
+  const { welcomeShown } = await chrome.storage.local.get({ welcomeShown: false });
+  if (welcomeShown) return;
+  await showWelcome();
+}
+chrome.runtime.onStartup.addListener(() => {
+  console.log("Sudon't: onStartup");
+  void syncContentScripts().catch(error => console.error("Sudon't: syncContentScripts failed", error));
+  void guardAllTabs().catch(error => console.error("Sudon't: guardAllTabs failed", error));
+  void showWelcomeIfNeeded().catch(error => console.error("Sudon't: showWelcomeIfNeeded failed", error));
+});
+chrome.runtime.onInstalled.addListener(details => {
+  console.log("Sudon't: onInstalled", details.reason);
+  void syncContentScripts().catch(error => console.error("Sudon't: syncContentScripts failed", error));
+  void guardAllTabs().catch(error => console.error("Sudon't: guardAllTabs failed", error));
+  if (details.reason === 'install') void showWelcome().catch(error => console.error("Sudon't: showWelcome failed", error));
+  else void showWelcomeIfNeeded().catch(error => console.error("Sudon't: showWelcomeIfNeeded failed", error));
+});
+chrome.permissions.onAdded.addListener(() => {
+  void syncContentScripts().catch(error => console.error("Sudon't: syncContentScripts failed", error));
+  void guardAllTabs().catch(error => console.error("Sudon't: guardAllTabs failed", error));
+});
+chrome.permissions.onRemoved.addListener(() => {
+  void syncContentScripts().catch(error => console.error("Sudon't: syncContentScripts failed", error));
+  void guardAllTabs().catch(error => console.error("Sudon't: guardAllTabs failed", error));
+});
+chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === alarmName) void guardAllTabs().catch(error => console.error("Sudon't: guardAllTabs failed", error)); });
+chrome.action.onClicked.addListener(() => void chrome.runtime.openOptionsPage().catch(error => console.error("Sudon't: failed to open options page", error)));
+void syncContentScripts().catch(error => console.error("Sudon't: syncContentScripts failed", error));
+void guardAllTabs().catch(error => console.error("Sudon't: guardAllTabs failed", error));
