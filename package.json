@@ -1,6 +1,7 @@
 {
   "name": "sudont",
   "version": "0.2.0",
+  "license": "GPL-3.0-only",
   "private": true,
   "description": "Sudon't - a puzzle before you scroll. Adds a small pause before distracting websites open.",
   "packageManager": "pnpm@12.6.0",
