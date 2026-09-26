@@ -61,6 +61,25 @@ Load `dist/` as an unpacked extension in Chrome (`chrome://extensions`,
 enable Developer mode, "Load unpacked") or in Firefox
 (`about:debugging#/runtime/this-firefox`, "Load Temporary Add-on").
 
+## Publishing an existing release
+
+Run the **publish-stores** workflow from the GitHub Actions page. Enter an
+existing GitHub release tag and select Firefox, Chrome, or both. The workflow
+validates and downloads that release's ZIP files before submitting them for
+store review. Firefox receives the GitHub release notes and source archive as
+part of its submission. Chrome does not provide an API for release notes, so
+the GitHub release remains its changelog.
+
+Create a `browser-stores` GitHub environment with these secrets:
+
+- `AMO_JWT_ISSUER` and `AMO_JWT_SECRET`, from the Firefox Add-ons API keys page.
+- `CHROME_SERVICE_ACCOUNT_JSON`, for a Google service account linked to the
+  Chrome Web Store publisher account.
+
+Add `CHROME_EXTENSION_ID` and `CHROME_PUBLISHER_ID` as environment variables.
+The extension listings must already exist in both stores. Store review and
+approval still happen after the workflow completes.
+
 ## License
 
 TBD.

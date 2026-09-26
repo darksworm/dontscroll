@@ -1,0 +1,161 @@
+name: publish-stores
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing GitHub release tag to publish
+        required: true
+        type: string
+      store:
+        description: Store to submit to
+        required: true
+        default: both
+        type: choice
+        options:
+          - both
+          - firefox
+          - chrome
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-stores-${{ inputs.tag }}-${{ inputs.store }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+      - name: Validate release assets
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          version=$(node -p 'require("./package.json").version')
+          manifest_version=$(node -p 'require("./manifest.json").version')
+          test "$version" = "$manifest_version"
+          assets=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')
+          grep -Fx "sudont-${version}.zip" <<<"$assets"
+          grep -Fx "sudont-${version}-sources.zip" <<<"$assets"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+  publish-firefox:
+    needs: prepare
+    if: ${{ inputs.store == 'both' || inputs.store == 'firefox' }}
+    runs-on: ubuntu-24.04
+    environment: browser-stores
+    steps:
+      - name: Download release assets and notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "sudont-${VERSION}.zip" --pattern "sudont-${VERSION}-sources.zip"
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > release-notes.md
+      - name: Create Mozilla metadata
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const releaseNotes = fs.readFileSync('release-notes.md', 'utf8').trim();
+          fs.writeFileSync('amo-metadata.json', JSON.stringify({
+            version: {
+              release_notes: {
+                'en-US': releaseNotes || `Release ${process.env.VERSION}`
+              }
+            }
+          }));
+          NODE
+      - name: Submit to Firefox Add-ons
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          mkdir extension
+          unzip -q "sudont-${VERSION}.zip" -d extension
+          npx --yes web-ext@10.7.0 sign \
+            --source-dir=extension \
+            --channel=listed \
+            --amo-metadata=amo-metadata.json \
+            --upload-source-code="sudont-${VERSION}-sources.zip" \
+            --approval-timeout=0
+
+  publish-chrome:
+    needs: prepare
+    if: ${{ inputs.store == 'both' || inputs.store == 'chrome' }}
+    runs-on: ubuntu-24.04
+    environment: browser-stores
+    steps:
+      - name: Download extension package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "sudont-${VERSION}.zip"
+      - name: Prepare Chrome package
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir extension
+          unzip -q "sudont-${VERSION}.zip" -d extension
+          node - <<'NODE'
+          const fs = require('fs');
+          const manifestPath = 'extension/manifest.json';
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+          manifest.background = { service_worker: manifest.background.scripts[0] };
+          delete manifest.browser_specific_settings;
+          fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+          NODE
+          rm "sudont-${VERSION}.zip"
+          (cd extension && zip -q -r "../sudont-${VERSION}.zip" . -x '*.map')
+      - name: Authenticate with Google
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          credentials_json: ${{ secrets.CHROME_SERVICE_ACCOUNT_JSON }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+      - name: Upload extension to Chrome Web Store
+        env:
+          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          CHROME_EXTENSION_ID: ${{ vars.CHROME_EXTENSION_ID }}
+          CHROME_PUBLISHER_ID: ${{ vars.CHROME_PUBLISHER_ID }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          test -n "$CHROME_EXTENSION_ID"
+          test -n "$CHROME_PUBLISHER_ID"
+          response=$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/zip" \
+            --data-binary "@sudont-${VERSION}.zip" \
+            "https://chromewebstore.googleapis.com/upload/v2/publishers/${CHROME_PUBLISHER_ID}/items/${CHROME_EXTENSION_ID}:upload")
+          printf '%s\n' "$response"
+      - name: Submit extension for Chrome review
+        env:
+          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          CHROME_EXTENSION_ID: ${{ vars.CHROME_EXTENSION_ID }}
+          CHROME_PUBLISHER_ID: ${{ vars.CHROME_PUBLISHER_ID }}
+        run: |
+          curl --fail-with-body --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data '{"publishType":"DEFAULT_PUBLISH","deployInfos":[{"deployPercentage":100}],"blockOnWarnings":true}' \
+            "https://chromewebstore.googleapis.com/v2/publishers/${CHROME_PUBLISHER_ID}/items/${CHROME_EXTENSION_ID}:publish"
