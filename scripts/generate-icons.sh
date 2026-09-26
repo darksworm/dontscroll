@@ -7,6 +7,12 @@ if [ ! -f "$src" ]; then
   exit 1
 fi
 
+if command -v magick >/dev/null 2>&1; then
+  image_command=magick
+else
+  image_command=convert
+fi
+
 for size in 16 32 48; do
-  magick "$src" -resize "${size}x${size}" "icons/icon-${size}.png"
+  "$image_command" "$src" -resize "${size}x${size}" "icons/icon-${size}.png"
 done
