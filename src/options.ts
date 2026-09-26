@@ -86,12 +86,6 @@ async function renderSites() {
       grant.addEventListener('click', () => void grantSite(site));
       item.append(grant);
     }
-    const reset = document.createElement('button');
-    reset.type = 'button';
-    reset.textContent = 'Require Sudoku';
-    reset.setAttribute('aria-label', `Require Sudoku on ${site}`);
-    reset.addEventListener('click', () => void resetSessions(site));
-    item.append(reset);
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.textContent = 'Remove';
@@ -193,7 +187,8 @@ async function renderTimeLeft() {
   for (const timer of document.querySelectorAll<HTMLElement>('[data-session-site]')) {
     const remaining = Math.max(0, sessionExpiry(sessions[sessionKey(timer.dataset.sessionSite!)]) - Date.now());
     const seconds = Math.ceil(remaining / 1000);
-    timer.textContent = remaining > 0 ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} left` : 'Sudoku required';
+    timer.hidden = remaining === 0;
+    timer.textContent = remaining > 0 ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} left` : '';
     if (remaining > 0) active++;
   }
   timeLeft!.textContent = active ? `${active} website${active === 1 ? '' : 's'} with scrolling time left` : 'No active scrolling time';
