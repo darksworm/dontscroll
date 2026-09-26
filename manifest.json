@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Sudon't",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A puzzle before you scroll. Adds a small pause before opening distracting websites.",
   "homepage_url": "https://github.com/darksworm/sudont",
   "permissions": ["storage", "tabs", "alarms", "scripting"],

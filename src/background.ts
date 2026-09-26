@@ -1,23 +1,41 @@
-export {};
-const stateKey = 'scrollSession';
-const alarmName = 'scroll-session-expired';
+import { alarmPrefix, getSites, resolveSite, sessionExpiry, sessionKey, sessionPrefix } from './sessions';
+
+let operations: Promise<unknown> = Promise.resolve();
+function enqueue<Result>(operation: () => Promise<Result>): Promise<Result> {
+  const result = operations.then(operation);
+  operations = result.catch(() => {});
+  return result;
+}
 const extraTimeLogKey = 'extraTimeLog';
 const extraTimeLogLimit = 200;
 const maxExtraMinutes = 60;
-const sitesKey = 'sites';
-const defaultSites = ['youtube.com', 'reddit.com'];
 const contentScriptId = 'dontscroll-gate';
 
-async function getSites(): Promise<string[]> {
-  const { [sitesKey]: sites } = await chrome.storage.local.get({ [sitesKey]: defaultSites });
-  return Array.isArray(sites) && sites.every(site => typeof site === 'string') ? sites : defaultSites;
+async function reconcileSessions() {
+  const sites = await getSites();
+  const stored = await chrome.storage.local.get(null);
+  if (stored.scrollSession !== undefined) {
+    const unlockedUntil = sessionExpiry(stored.scrollSession);
+    if (unlockedUntil > Date.now()) {
+      const migrated = Object.fromEntries(sites.filter(site => stored[sessionKey(site)] === undefined).map(site => [sessionKey(site), { unlockedUntil }]));
+      await chrome.storage.local.set(migrated);
+      Object.assign(stored, migrated);
+    }
+    await chrome.storage.local.remove('scrollSession');
+  }
+  await chrome.alarms.clear('scroll-session-expired');
+  const staleKeys = Object.keys(stored).filter(key => key.startsWith(sessionPrefix) && !sites.includes(key.slice(sessionPrefix.length)));
+  if (staleKeys.length) await chrome.storage.local.remove(staleKeys);
+  for (const alarm of await chrome.alarms.getAll()) {
+    if (alarm.name.startsWith(alarmPrefix) && !sites.includes(alarm.name.slice(alarmPrefix.length))) await chrome.alarms.clear(alarm.name);
+  }
+  for (const site of sites) {
+    const expiry = sessionExpiry(stored[sessionKey(site)]);
+    if (expiry > Date.now()) await chrome.alarms.create(`${alarmPrefix}${site}`, { when: expiry + 500 });
+    else await chrome.alarms.clear(`${alarmPrefix}${site}`);
+  }
 }
-function isBlockedUrl(url: string | undefined, sites: string[]): boolean {
-  try {
-    const parsed = new URL(url ?? '');
-    return /^https?:$/.test(parsed.protocol) && sites.some(host => parsed.hostname === host || parsed.hostname.endsWith(`.${host}`));
-  } catch { return false; }
-}
+const initialized = enqueue(reconcileSessions);
 function sitePatterns(sites: string[]): string[] {
   return sites.flatMap(host => [`*://${host}/*`, `*://*.${host}/*`]);
 }
@@ -46,15 +64,15 @@ async function syncContentScripts() {
   if (existing.length) await chrome.scripting.updateContentScripts([script]);
   else await chrome.scripting.registerContentScripts([script]);
 }
-async function guardAllTabs() {
-  const { scrollSession } = await chrome.storage.local.get({ scrollSession: { unlockedUntil: 0 } });
-  if (scrollSession.unlockedUntil > Date.now()) {
-    await chrome.alarms.create(alarmName, { when: scrollSession.unlockedUntil + 500 });
-    return;
-  }
+async function guardAllTabs(onlySite?: string) {
+  await initialized;
   const sites = await getSites();
+  const sessions = await chrome.storage.local.get(sites.map(sessionKey));
   const tabs = await chrome.tabs.query({});
-  await Promise.all(tabs.filter(tab => tab.id !== undefined && isBlockedUrl(tab.url, sites)).map(tab => chrome.tabs.sendMessage(tab.id!, { type: 'show-sudoku' }).catch(error => console.error("Sudon't: failed to message tab", tab.id, error))));
+  await Promise.all(tabs.filter(tab => {
+    const site = resolveSite(tab.url, sites);
+    return tab.id !== undefined && site !== undefined && (!onlySite || site === onlySite) && sessionExpiry(sessions[sessionKey(site)]) <= Date.now();
+  }).map(tab => chrome.tabs.sendMessage(tab.id!, { type: 'show-sudoku' }).catch(error => console.error("Sudon't: failed to message tab", tab.id, error))));
 }
 async function logExtraTimeGrant(minutes: number, reason: string, website?: string) {
   const { [extraTimeLogKey]: log } = await chrome.storage.local.get({ [extraTimeLogKey]: [] as unknown[] });
@@ -62,40 +80,48 @@ async function logExtraTimeGrant(minutes: number, reason: string, website?: stri
   const updated = [...(Array.isArray(log) ? log : []), entry].slice(-extraTimeLogLimit);
   await chrome.storage.local.set({ [extraTimeLogKey]: updated });
 }
-async function unlock(extra?: number, reason?: string, website?: string) {
+async function unlock(website: string, extra?: number, reason?: string) {
   if (extra !== undefined && (!Number.isInteger(extra) || extra < 1 || extra > maxExtraMinutes || typeof reason !== 'string' || reason.trim().length < 80)) throw new Error('Invalid extra time request');
-  const settings = await chrome.storage.local.get({ unlockMinutes: 15, scrollSession: { unlockedUntil: 0 } });
+  const key = sessionKey(website);
+  const settings = await chrome.storage.local.get({ unlockMinutes: 15, [key]: { unlockedUntil: 0 } });
   const duration = Math.max(1, Math.min(240, Number(settings.unlockMinutes) || 15));
-  const base = settings.scrollSession.unlockedUntil > Date.now() ? settings.scrollSession.unlockedUntil : Date.now() + duration * 60_000;
+  const expiry = sessionExpiry(settings[key]);
+  const base = expiry > Date.now() ? expiry : Date.now() + duration * 60_000;
   const unlockedUntil = base + (extra ?? 0) * 60_000;
-  await chrome.storage.local.set({ [stateKey]: { unlockedUntil } });
-  await chrome.alarms.create(alarmName, { when: unlockedUntil + 500 });
+  await chrome.storage.local.set({ [key]: { unlockedUntil } });
+  await chrome.alarms.create(`${alarmPrefix}${website}`, { when: unlockedUntil + 500 });
   if (extra !== undefined && reason !== undefined) await logExtraTimeGrant(extra, reason.trim(), website);
   return unlockedUntil;
 }
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (!['enter-site', 'sudoku-solved', 'reset-session', 'sites-changed'].includes(message?.type)) return false;
   const operation = async () => {
-    const fromOptionsPage = sender.id === chrome.runtime.id && sender.url?.startsWith(chrome.runtime.getURL(''));
+    await initialized;
+    if (sender.id !== chrome.runtime.id) return { ok: false };
+    const senderUrl = new URL(sender.url ?? chrome.runtime.getURL(''));
+    const fromOptionsPage = senderUrl.href.split(/[?#]/)[0] === chrome.runtime.getURL('options.html');
     if (message.type === 'sites-changed') {
       if (!fromOptionsPage) return { ok: false };
+      await reconcileSessions();
       await syncContentScripts();
       await guardAllTabs();
       return { ok: true };
     }
     const sites = await getSites();
-    const trusted = sender.id === chrome.runtime.id && (isBlockedUrl(sender.url, sites) || fromOptionsPage);
-    if (!trusted) return { ok: false };
     if (message.type === 'reset-session') {
-      await chrome.storage.local.set({ [stateKey]: { unlockedUntil: 0 } });
-      await chrome.alarms.clear(alarmName);
-      await guardAllTabs();
+      if (!fromOptionsPage || (message.site !== undefined && !sites.includes(message.site))) return { ok: false };
+      const targets = message.site === undefined ? sites : [message.site as string];
+      await chrome.storage.local.remove(targets.map(sessionKey));
+      await Promise.all(targets.map(site => chrome.alarms.clear(`${alarmPrefix}${site}`)));
+      await guardAllTabs(message.site);
       return { ok: true };
     }
-    const website = (() => { try { return new URL(sender.url ?? '').hostname; } catch { return undefined; } })();
-    return { ok: true, unlockedUntil: await unlock(message.minutes, message.reason, website) };
+    const fromBlockedPage = senderUrl.href.split(/[?#]/)[0] === chrome.runtime.getURL('blocked.html');
+    const website = resolveSite(fromBlockedPage ? senderUrl.searchParams.get('target') ?? undefined : sender.url, sites);
+    if (!website) return { ok: false };
+    return { ok: true, unlockedUntil: await unlock(website, message.type === 'enter-site' ? message.minutes : undefined, message.reason) };
   };
-  void operation().then(respond).catch(error => { console.error("Sudon't: message handler failed", message?.type, error); respond({ ok: false }); });
+  void enqueue(operation).then(respond).catch(error => { console.error("Sudon't: message handler failed", message?.type, error); respond({ ok: false }); });
   return true;
 });
 chrome.tabs.onUpdated.addListener((_id, change) => { if (change.url || change.status === 'complete') void guardAllTabs().catch(error => console.error("Sudon't: guardAllTabs failed", error)); });
@@ -135,7 +161,7 @@ chrome.permissions.onRemoved.addListener(() => {
   void syncContentScripts().catch(error => console.error("Sudon't: syncContentScripts failed", error));
   void guardAllTabs().catch(error => console.error("Sudon't: guardAllTabs failed", error));
 });
-chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === alarmName) void guardAllTabs().catch(error => console.error("Sudon't: guardAllTabs failed", error)); });
+chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name.startsWith(alarmPrefix)) void guardAllTabs(alarm.name.slice(alarmPrefix.length)).catch(error => console.error("Sudon't: guardAllTabs failed", error)); });
 chrome.action.onClicked.addListener(() => void chrome.runtime.openOptionsPage().catch(error => console.error("Sudon't: failed to open options page", error)));
 void syncContentScripts().catch(error => console.error("Sudon't: syncContentScripts failed", error));
 void guardAllTabs().catch(error => console.error("Sudon't: guardAllTabs failed", error));

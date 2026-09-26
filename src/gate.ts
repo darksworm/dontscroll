@@ -1,6 +1,6 @@
 import { createPuzzle, isSolved, type SudokuDifficulty } from './sudoku';
 
-export function mountGate(root: ShadowRoot, settings: { difficulty: SudokuDifficulty; unlockMinutes: number; jumps: number }, website: string, enter: (minutes?: number, reason?: string) => Promise<void>, onSolved?: () => void) {
+export function mountGate(root: ShadowRoot, settings: { difficulty: SudokuDifficulty; unlockMinutes: number; jumps: number }, website: string, enter: (minutes?: number, reason?: string) => Promise<void>, onSolved?: () => Promise<void>) {
   let state: 'puzzle' | 'choices' | 'time' = 'puzzle';
   let jumps = settings.jumps > 0 ? 1 + Math.floor(Math.random() * settings.jumps) : 0;
   root.innerHTML = `<style>
@@ -93,13 +93,18 @@ export function mountGate(root: ShadowRoot, settings: { difficulty: SudokuDiffic
     const cells: HTMLInputElement[] = [];
     select('h1').textContent = `Earn your ${settings.unlockMinutes} minutes`;
     select('.subtitle').textContent = `Complete this Sudoku before opening ${website}`;
+    let completed = false;
     const update = () => {
       const remaining = cells.filter(cell => !cell.value).length;
       select('.progress').textContent = remaining ? `${remaining} numbers to go` : 'Check your numbers';
-      if (isSolved(cells.map(cell => cell.value), puzzle.solution)) {
-        showChoices();
-        onSolved?.();
-        void chrome.runtime.sendMessage({ type: 'sudoku-solved' }).catch(error => console.error("Sudon't: failed to notify background of solve", error));
+      if (!completed && isSolved(cells.map(cell => cell.value), puzzle.solution)) {
+        completed = true;
+        error.hidden = true;
+        void (onSolved?.() ?? Promise.resolve()).then(() => showChoices()).catch(() => {
+          completed = false;
+          error.textContent = 'Could not unlock the site. Edit a number to try again.';
+          error.hidden = false;
+        });
       }
     };
     for (let index = 0; index < 81; index++) {
