@@ -7,7 +7,8 @@
   "permissions": ["storage", "tabs", "alarms", "scripting"],
   "optional_host_permissions": ["*://*/*"],
   "background": {
-    "scripts": ["background.js"]
+    "scripts": ["background.js"],
+    "service_worker": "background.js"
   },
   "options_ui": {
     "page": "options.html",
