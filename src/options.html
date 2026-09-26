@@ -15,7 +15,7 @@
       #extra-time-log li { padding: 8px 0; border-bottom: 1px solid #e5e0d4; font-size: 14px; }
       #extra-time-log .meta { color: #716a5c; font-weight: 400; }
       #sites { list-style: none; padding: 0; margin: 8px 0; }
-      #sites li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #e5e0d4; }
+      #sites li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid #e5e0d4; }
       #sites li.inactive { background: #fbf1ef; }
       #sites button { padding: 4px 10px; }
       #sites .status { font-size: 13px; color: #a3453b; font-weight: 700; }
@@ -39,7 +39,7 @@
     </div>
 
     <label>Watched websites</label>
-    <p>The Sudoku gate only applies to the sites listed here.</p>
+    <p>Each website has its own timer, shared across its tabs and subdomains. If entries overlap, the most specific website has its own timer.</p>
     <ul id="sites"></ul>
     <div class="add-site">
       <input id="new-site" type="text" placeholder="example.com">
@@ -61,13 +61,13 @@
     <p>Each visit uses a random number of jumps from 0 through this value.</p>
     <label for="unlock-minutes">Scrolling time after solving (minutes)</label>
     <input id="unlock-minutes" type="number" min="1" max="240" step="1">
-    <p>When this expires, all blocked tabs require a new Sudoku solution.</p>
+    <p>This duration applies to each website separately. When its timer expires, only that website requires a new Sudoku solution. Timers keep running when tabs are closed.</p>
     <button id="save">Save settings</button>
 
     <details>
       <summary>Developer settings</summary>
       <p id="time-left">Loading session status...</p>
-      <button id="reset-session">Require Sudoku now</button>
+      <button id="reset-session">Require Sudoku on all websites</button>
       <h2>Extra time log</h2>
       <ul id="extra-time-log"></ul>
     </details>

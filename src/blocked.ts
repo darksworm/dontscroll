@@ -14,5 +14,8 @@ void chrome.storage.local.get({ difficulty: 'trivial', unlockMinutes: 15, jumps:
     const response = await chrome.runtime.sendMessage({ type: 'enter-site', minutes, reason });
     if (!response?.ok) throw new Error('Unlock failed');
     location.replace(target);
+  }, async () => {
+    const response = await chrome.runtime.sendMessage({ type: 'sudoku-solved' });
+    if (!response?.ok) throw new Error('Unlock failed');
   });
 });

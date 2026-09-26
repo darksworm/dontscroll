@@ -1,4 +1,4 @@
-export {};
+import { getSites, sessionExpiry, sessionKey, sessionPrefix } from './sessions';
 const difficulty = document.querySelector<HTMLSelectElement>('#difficulty');
 const jumps = document.querySelector<HTMLInputElement>('#jumps');
 const unlockMinutes = document.querySelector<HTMLInputElement>('#unlock-minutes');
@@ -16,8 +16,6 @@ const allowAll = document.querySelector<HTMLButtonElement>('#allow-all');
 
 if (!difficulty || !jumps || !unlockMinutes || !save || !resetSession || !timeLeft || !saved || !extraTimeLog || !sitesList || !newSite || !addSite || !siteError || !welcomeBanner || !allowAll) throw new Error('Settings page is missing required elements');
 
-const defaultSites = ['youtube.com', 'reddit.com'];
-
 function normalizeSite(input: string): string | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
@@ -32,10 +30,6 @@ function sitePatterns(site: string): string[] {
 }
 function allSitePatterns(sites: string[]): string[] {
   return sites.flatMap(sitePatterns);
-}
-async function getSites(): Promise<string[]> {
-  const { sites } = await chrome.storage.local.get({ sites: defaultSites });
-  return Array.isArray(sites) && sites.every(site => typeof site === 'string') ? sites : defaultSites;
 }
 async function grantSite(site: string) {
   const granted = await chrome.permissions.request({ origins: sitePatterns(site) }).catch(error => {
@@ -75,7 +69,9 @@ async function renderSites() {
     info.className = 'site-info';
     const label = document.createElement('span');
     label.textContent = site;
-    info.append(label);
+    const timer = document.createElement('span');
+    timer.dataset.sessionSite = site;
+    info.append(label, timer);
     if (!granted) {
       const status = document.createElement('span');
       status.className = 'status';
@@ -90,6 +86,12 @@ async function renderSites() {
       grant.addEventListener('click', () => void grantSite(site));
       item.append(grant);
     }
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.textContent = 'Require Sudoku';
+    reset.setAttribute('aria-label', `Require Sudoku on ${site}`);
+    reset.addEventListener('click', () => void resetSessions(site));
+    item.append(reset);
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.textContent = 'Remove';
@@ -97,6 +99,7 @@ async function renderSites() {
     item.append(remove);
     sitesList!.append(item);
   }
+  await renderTimeLeft();
 }
 async function removeSite(site: string) {
   const sites = await getSites();
@@ -177,17 +180,23 @@ async function renderExtraTimeLog() {
 }
 void renderExtraTimeLog();
 
-void chrome.storage.local.get({ difficulty: 'trivial', jumps: 10, unlockMinutes: 15, scrollSession: { unlockedUntil: 0 } }).then((settings) => {
+void chrome.storage.local.get({ difficulty: 'trivial', jumps: 10, unlockMinutes: 15 }).then((settings) => {
   difficulty.value = settings.difficulty;
   jumps.value = String(settings.jumps);
   unlockMinutes.value = String(settings.unlockMinutes);
 });
 
 async function renderTimeLeft() {
-  const { scrollSession } = await chrome.storage.local.get({ scrollSession: { unlockedUntil: 0 } });
-  const remaining = Math.max(0, Number(scrollSession.unlockedUntil) - Date.now());
-  const seconds = Math.ceil(remaining / 1000);
-  timeLeft!.textContent = remaining > 0 ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} of scrolling time left` : 'No active scrolling time';
+  const sites = await getSites();
+  const sessions = await chrome.storage.local.get(sites.map(sessionKey));
+  let active = 0;
+  for (const timer of document.querySelectorAll<HTMLElement>('[data-session-site]')) {
+    const remaining = Math.max(0, sessionExpiry(sessions[sessionKey(timer.dataset.sessionSite!)]) - Date.now());
+    const seconds = Math.ceil(remaining / 1000);
+    timer.textContent = remaining > 0 ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} left` : 'Sudoku required';
+    if (remaining > 0) active++;
+  }
+  timeLeft!.textContent = active ? `${active} website${active === 1 ? '' : 's'} with scrolling time left` : 'No active scrolling time';
 }
 void renderTimeLeft();
 window.setInterval(() => void renderTimeLeft(), 1000);
@@ -202,11 +211,20 @@ save.addEventListener('click', async () => {
   saved.textContent = 'Settings saved.';
 });
 
-resetSession.addEventListener('click', () => {
-  void chrome.runtime.sendMessage({ type: 'reset-session' }).then(() => {
-    saved.textContent = 'Sudoku required on the next blocked-site visit.';
-  }).catch(error => {
+async function resetSessions(site?: string) {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: 'reset-session', site });
+    if (!response?.ok) throw new Error('Reset failed');
+    saved!.textContent = site ? `Sudoku required on ${site}.` : 'Sudoku required on all watched websites.';
+    await renderTimeLeft();
+  } catch (error) {
     console.error("Sudon't: failed to reset session", error);
-    saved.textContent = 'Failed to reset session.';
-  });
+    saved!.textContent = 'Failed to reset session.';
+  }
+}
+resetSession.addEventListener('click', () => void resetSessions());
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local') return;
+  if (changes.sites) void renderSites();
+  else if (Object.keys(changes).some(key => key.startsWith(sessionPrefix))) void renderTimeLeft();
 });
